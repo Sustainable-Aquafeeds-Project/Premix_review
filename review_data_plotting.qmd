@@ -12,6 +12,8 @@ library(ggpubr)
 library(RColorBrewer)
 library(waffle)
 library(sf)
+library(terra)
+library(rnaturalearth)
 
 rdsi_dir <- "/mnt/rdsi/raw_data"
 
@@ -270,16 +272,48 @@ Overlay of mining for key metals in premix with biodiversity layers
 
 ```{r}
 
-mining_facilities <- st_read(file.path(rdsi_dir, "mining_locations/jasansky_2023_global_mining_disaggregated/data/facilities.gpkg"))
+mining_facilities <- st_read(file.path(rdsi_dir, "mining_locations/jasansky_2023_global_mining_disaggregated/data/facilities.gpkg")) |> 
+  filter(primary_commodity %in% c("Copper", "Iron", "Zinc", "Other mine"))
 
 
-mining_facilities |> pull(primary_commodity) |> unique()
+
+# predicted land-sea species richness from Gagne et al 2020
+
+marine_relative_richness <- project(rast("data/species_richness/file_show (2).tiff"), rast(res=0.5))
+marine_relative_richness[is.na(marine_relative_richness[])] <- 0
+
+terrestrial_relative_richness <- project(rast("data/species_richness/file_show (3).tiff"), rast(res=0.5))
+terrestrial_relative_richness[is.na(terrestrial_relative_richness[])] <- 0
+
+plot(terrestrial_relative_richness)
+plot(marine_relative_richness)
 
 
-plot(mining_facilities |> select(primary_commodity) |> filter(primary_commodity %in% c("Copper", "Iron", "Zinc", "Other mine")))
+land_sea_richness_rast <- app(c(marine_relative_richness, terrestrial_relative_richness), fun = sum, na.rm=TRUE)
+
+land_sea_richness_df <- terra::as.data.frame(land_sea_richness_rast, xy=TRUE)
+
+coastline = ne_coastline(scale = "medium", returnclass = "sf")
 
 
-mining_facilities |> pull(primary_commodity) |> unique()
+#plot richness
 
+ggplot()+
+  geom_tile(data = land_sea_richness__df, aes(x = x, y = y, fill = sum), width=1, height = 1)+
+  geom_sf(data = coastline, colour = "grey50", linewidth = 0.4)+
+  geom_sf(data = mining_facilities, aes(colour = primary_commodity))+
+  theme_void()+
+  theme(legend.position = "bottom",
+        text = element_text(size=10),
+        plot.margin = margin(t=0,
+                             l=0,
+                             r=0,
+                             b=0))+
+  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5),
+         colour = guide_legend(title.position = "top", title.hjust = 0.5))+
+  labs(fill = "Relative species richness", colour = "Metal ore mining locations")
+
+
+ggsave("figures/mining_locations_spp_richness_overlay.jpg", device = "jpg", dpi = 300, width = 18, height = 11, units = "cm")
 
 ```

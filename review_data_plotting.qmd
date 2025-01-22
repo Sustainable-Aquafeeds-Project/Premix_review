@@ -22,7 +22,7 @@ Trends in the use of Premix in LCA
 ```{r}
 
 full_data <-  
-  read_csv("Premix papers v 25-01-14.csv") |> 
+  read_csv("data/Premix papers v 25-01-14.csv") |> 
   clean_names() |> 
   mutate(animal_type = case_when(animal_type == "pig" ~ "Pig",
                                  TRUE ~ animal_type)) |> 

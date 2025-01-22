@@ -1,0 +1,285 @@
+---
+title: "Tallying data"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(here)
+library(ggpubr)
+library(RColorBrewer)
+library(waffle)
+library(sf)
+
+rdsi_dir <- "/mnt/rdsi/raw_data"
+
+```
+
+Trends in the use of Premix in LCA
+
+```{r}
+
+full_data <-  
+  read_csv("Premix papers v 25-01-14.csv") |> 
+  clean_names() |> 
+  mutate(animal_type = case_when(animal_type == "pig" ~ "Pig",
+                                 TRUE ~ animal_type)) |> 
+  mutate(animal_type = case_when(is.na(animal_type) & animal == "Rainbow trout" ~ "Fish/Crustaceans",
+                                 animal == "Dairy Cattle" ~ "Cattle",
+                                 is.na(animal_type) ~ animal,
+                                 TRUE ~ animal_type)) |> 
+  mutate(mineral_premix_included_y_n = case_when(mineral_premix_included_y_n == "?" ~ "N",
+                                                 is.na(mineral_premix_included_y_n) ~ "N",
+                                                 TRUE ~ mineral_premix_included_y_n)) |> 
+  mutate(inclusion = case_when(mineral_premix_included_y_n == "Y" & proxy_y_n == "N" ~ "Included",
+                               mineral_premix_included_y_n == "Y" & proxy_y_n == "Y" ~  "Included as proxy",
+                               TRUE ~ "Omitted"))
+
+#Check unique animal types
+(animal_types <- full_data |> pull(animal_type) |> unique())
+
+
+#check for NAs
+full_data |> 
+  filter(is.na(animal_type))
+
+
+summary_by_spp <- 
+  full_data |> 
+  group_by(animal_type, mineral_premix_included_y_n) |> 
+  count() |> 
+  rename(Premix = mineral_premix_included_y_n) |> 
+  mutate(Premix = case_when(Premix == "Y" ~ "Premix included",
+                            TRUE ~ "Premix not included")) |> 
+  mutate(animal_type = case_when(animal_type == "Fish/Crustaceans" ~ "Fish/\nCrustaceans", 
+                                 TRUE ~ animal_type)) |> 
+  mutate(animal_type = factor(animal_type, levels = c("Cattle", "Chicken", "Pig", "Fish/\nCrustaceans")))
+  
+  
+
+(p1 <- 
+  ggplot(data = summary_by_spp)+
+  aes(x = reorder(animal_type, -n), y = n, fill = Premix )+
+  geom_col()+
+  theme_pubr()+
+  labs(y = "Number of studies")+
+  scale_fill_manual(values = brewer.pal(n = 2, "Dark2"))+
+    theme(legend.position = c(0.75, 0.9),
+          legend.background = element_rect(fill = "transparent"),
+          legend.key.size = unit(0.4, "cm"),
+          legend.title = element_blank(),
+          text = element_text(size=10),
+                  axis.text = element_text(size=9),
+          axis.title.x = element_blank())
+  )
+
+ggsave(filename = "explore/cottrell_explore/overall_count.jpg", device = "jpg", dpi = 300, width=8.9, height =8, units = "cm")
+
+
+summary_by_inclusion <- 
+  full_data |> 
+  group_by(animal_type, inclusion) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(animal_type) |> 
+  nest() |> 
+  mutate(total = map(data, ~(sum(.$n)))) |> 
+  unnest(c(data, total)) |> 
+  ungroup() |> 
+  mutate(prop = n/total) |> 
+  mutate(animal_type = factor(animal_type, levels = c("Cattle", "Chicken", "Pig", "Fish/Crustaceans"))) |>
+  mutate(inclusion = case_when(inclusion == "Included as proxy" ~ "Included\nas proxy", 
+                               TRUE ~ inclusion))
+  
+
+
+
+(p2 <- 
+  ggplot(data = summary_by_inclusion)+
+  aes(x = inclusion,  y = prop, fill = animal_type )+
+  geom_col(position = "dodge")+
+  theme_pubr()+
+  theme(legend.position = c(0.3, 0.85),
+          legend.background = element_rect(fill = "transparent"),
+          legend.key.size = unit(0.4, "cm"),
+          text = element_text(size=10),
+        axis.text = element_text(size=9),
+          axis.title.x = element_blank(),
+        legend.title = element_blank())+
+  scale_fill_manual(values = brewer.pal(4, "PRGn"))+
+  scale_y_continuous(limits = c(0,1))+
+  labs(y = "Proportion of studies")
+)
+
+ggsave(filename = "explore/cottrell_explore/count_by_inclusion_level.jpg", device = "jpg", dpi = 300, width=8.9, height =8, units = "cm")
+
+ggarrange(p1, p2, 
+          nrow = 1, 
+          ncol = 2, 
+          widths = c(1,1),
+          labels = "auto", 
+          font.label = list(size = 10))
+
+ggsave(filename = "figures/summary_of_inclusion_and_inclusion_type.jpg", device = "jpg", dpi=600, width = 18, height = 8, units="cm")
+
+
+
+```
+
+Explore the nature of the proxy used
+
+```{r}
+
+proxy_types <- 
+  full_data |> 
+  filter(proxy_y_n == "Y") |> 
+   mutate(proxy_name = fct_collapse(proxy_name,
+                                   'Sodium chloride'='Salt (sodium chloride)',
+                                   'Calcium carbonate'=c ('Limestone','Limestone (calcium carbonate)', 'Limestone is assumed to be a proxy for mineral premix listed in feed composition data'))) |> 
+  mutate(proxy_name = str_to_sentence(proxy_name)) |> 
+  mutate(proxy_name = case_when(proxy_name == "Sodium bicarbonate, europe, at mill'" ~ "Sodium bicarbonate",
+                                proxy_name == "Calcium carbonate, sodium bicarbonate and calcium phosphate" ~ "Mixed",
+                                TRUE ~ proxy_name)) |> 
+  group_by(proxy_name) |> 
+  count() 
+
+ 
+  # mutate(proxy_name = factor(proxy_name, levels = c("Calcium carbonate", 
+  #                                                   "Phosphorus", 
+  #                                                   "Sodium chloride", 
+  #                                                   "Sodium bicarbonate", 
+  #                                                   "Phosphate",
+  #                                                   "Phosphorus",
+  #                                                   "Sodium bicarbonate",
+  #                                                   
+  #                                                   )))
+  
+
+
+
+proxy_types$proxy_name |> unique()
+
+
+ggplot(data = proxy_types)+
+  aes(fill = proxy_name, values = n)+
+  geom_waffle(n_rows = 5)+
+  theme_void()+
+  theme(
+    legend.position = "bottom"
+  )
+
+
+p1 <- ggplot(proxy_types |> 
+         mutate(proxy_name = case_when(proxy_name == "Calcium carbonate" ~ "Calcium\ncarbonate",
+                                       proxy_name == "Sodium chloride" ~ "Sodium\nchloride",
+                                       proxy_name == "Sodium bicarbonate" ~ "Sodium\nbicarbonate",
+                                       proxy_name == "Crystalline amino acids" ~ "Crystalline\namino acids",
+                                       TRUE ~ proxy_name)) |> 
+  mutate(proxy_name = factor(proxy_name, levels = c("Calcium\ncarbonate", "Sodium\nchloride", "Phosphorus", "Sodium\nbicarbonate", "Phosphate", "Maize starch", "Crystalline\namino acids", "Mixed"))))+
+  aes(y = n, x = reorder(proxy_name, desc(proxy_name)), fill = proxy_name)+
+  geom_col()+
+  theme_pubr()+
+  theme(
+    legend.background = element_rect(fill = "transparent"),
+    legend.key.size = unit(0.4, "cm"),
+    text = element_text(size=10),
+    axis.text = element_text(size=9),
+    #axis.text.y = element_text(angle = 45, hjust = 1),
+    axis.title.y = element_blank(),
+    legend.title = element_blank(),
+  
+    )+
+  labs(y = "Number of studies")+
+  scale_fill_manual(values = c("Calcium\ncarbonate" = brewer.pal(8, name = "BuPu")[8],
+                               "Phosphorus" = brewer.pal(8, name = "BuPu")[6],
+                               "Sodium\nchloride" = brewer.pal(8, name = "BuPu")[7],
+                               "Sodium\nbicarbonate" = brewer.pal(8, name = "BuPu")[5],
+                               "Phosphate" = brewer.pal(8, name = "BuPu")[4],
+                               "Mixed" = brewer.pal(8, name = "BuPu")[2],
+                               "Maize starch" = brewer.pal(8, name = "BuPu")[3],
+                               "Crystalline\namino acids" = brewer.pal(8, name = "BuPu")[2]))+
+  guides(fill=FALSE)+
+  coord_flip()
+
+ggsave(filename = "figures/proxy_type.jpg", device = "jpg", dpi = 600, width = 8.9, height = 8, units = "cm")
+
+
+
+proxy_types_taxa <- 
+  full_data |> 
+  filter(proxy_y_n == "Y") |> 
+   mutate(proxy_name = fct_collapse(proxy_name,
+                                   'Sodium chloride'='Salt (sodium chloride)',
+                                   'Calcium carbonate'=c ('Limestone','Limestone (calcium carbonate)', 'Limestone is assumed to be a proxy for mineral premix listed in feed composition data'))) |> 
+  mutate(proxy_name = str_to_sentence(proxy_name)) |> 
+  mutate(proxy_name = case_when(proxy_name == "Sodium bicarbonate, europe, at mill'" ~ "Sodium bicarbonate",
+                                proxy_name == "Calcium carbonate, sodium bicarbonate and calcium phosphate" ~ "Mixed",
+                                TRUE ~ proxy_name)) |> 
+  mutate(proxy_name = case_when(proxy_name == "Calcium carbonate" ~ "Calcium\ncarbonate",
+                                       proxy_name == "Sodium chloride" ~ "Sodium\nchloride",
+                                       proxy_name == "Sodium bicarbonate" ~ "Sodium\nbicarbonate",
+                                       proxy_name == "Crystalline amino acids" ~ "Crystalline\namino acids",
+                                       TRUE ~ proxy_name)) |> 
+         mutate(proxy_name = factor(proxy_name, levels = c("Calcium\ncarbonate", "Sodium\nchloride", "Phosphorus", "Sodium\nbicarbonate", "Phosphate", "Maize starch", "Crystalline\namino acids", "Mixed"))) |> 
+  mutate(animal_type = factor(animal_type, levels = c("Cattle", "Chicken", "Pig", "Fish/Crustaceans"))) |> 
+  select(proxy_name,animal_type) |> 
+  table() |> as.data.frame()
+
+
+p2 <- ggplot(data = proxy_types_taxa |> 
+               mutate(proxy_name = factor(proxy_name, levels = c("Calcium\ncarbonate", "Sodium\nchloride", "Phosphorus", "Sodium\nbicarbonate", "Phosphate", "Maize starch", "Crystalline\namino acids", "Mixed"))))+
+  aes(x = reorder(proxy_name, desc(proxy_name)), y = Freq, fill = animal_type)+
+  geom_col(position = "dodge")+
+  scale_fill_manual(values = brewer.pal(4, "PRGn"))+
+  theme_pubr()+
+  theme(
+    legend.background = element_rect(fill = "transparent"),
+    legend.position = c(0.75, 0.14),
+    legend.key.size = unit(0.4, "cm"),
+    text = element_text(size=10),
+    axis.text = element_text(size=9),
+    #axis.text.y = element_text(angle = 45, hjust = 1),
+    axis.title.y = element_blank(),
+    legend.title = element_blank(),
+  
+    )+
+  scale_y_continuous(expand = c(0,0))+
+  geom_vline(xintercept = c(1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5), linetype = 2, colour = "grey90")+
+  labs(y = "No. of studies")+
+  coord_flip()
+
+ggsave(filename = "figures/proxy_type_by_taxa.jpg", device = "jpg", dpi = 600, width = 8.9, height = 8, units = "cm")
+
+
+
+
+ggarrange(p1, p2, 
+          nrow = 1, 
+          ncol = 2, 
+          widths = c(1,1),
+          labels = "auto", 
+          font.label = list(size = 10))
+
+ggsave(filename = "figures/summary_of_proxies_used.jpg", device = "jpg", dpi=600, width = 18, height = 8, units="cm")
+
+```
+
+Overlay of mining for key metals in premix with biodiversity layers
+
+```{r}
+
+mining_facilities <- st_read(file.path(rdsi_dir, "mining_locations/jasansky_2023_global_mining_disaggregated/data/facilities.gpkg"))
+
+
+mining_facilities |> pull(primary_commodity) |> unique()
+
+
+plot(mining_facilities |> select(primary_commodity) |> filter(primary_commodity %in% c("Copper", "Iron", "Zinc", "Other mine")))
+
+
+mining_facilities |> pull(primary_commodity) |> unique()
+
+
+```

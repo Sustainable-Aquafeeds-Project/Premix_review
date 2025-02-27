@@ -43,7 +43,7 @@ full_data <-
 (animal_types <- full_data |> pull(animal_type) |> unique())
 
 
-#check for NAs
+#check for NAs - all good
 full_data |> 
   filter(is.na(animal_type))
 

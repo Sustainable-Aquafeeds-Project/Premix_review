@@ -14,6 +14,7 @@ library(waffle)
 library(sf)
 library(terra)
 library(rnaturalearth)
+library(readxl)
 
 rdsi_dir <- "/mnt/rdsi/raw_data"
 
@@ -275,6 +276,8 @@ Overlay of mining for key metals in premix with biodiversity layers
 mining_facilities <- st_read(file.path(rdsi_dir, "mining_locations/jasansky_2023_global_mining_disaggregated/data/facilities.gpkg")) |> 
   filter(primary_commodity %in% c("Copper", "Iron", "Zinc", "Other mine"))
 
+test <- mining_facilities %>%
+  st_drop_geometry()
 
 
 # predicted land-sea species richness from Gagne et al 2020
@@ -299,7 +302,7 @@ coastline = ne_coastline(scale = "medium", returnclass = "sf")
 #plot richness
 
 ggplot()+
-  geom_tile(data = land_sea_richness__df, aes(x = x, y = y, fill = sum), width=1, height = 1)+
+  geom_tile(data = land_sea_richness_df, aes(x = x, y = y, fill = sum), width=1, height = 1)+
   geom_sf(data = coastline, colour = "grey50", linewidth = 0.4)+
   geom_sf(data = mining_facilities, aes(colour = primary_commodity))+
   theme_void()+
@@ -317,3 +320,177 @@ ggplot()+
 ggsave("figures/mining_locations_spp_richness_overlay.jpg", device = "jpg", dpi = 300, width = 18, height = 11, units = "cm")
 
 ```
+Use data from https://www.icmm.com/en-gb/research/data/2025/global-mining-dataset
+I suggest we use mines that have any of Zn, P, Co, Cu, Mg, Mn, Mo, as a primary, secondary or other (see the columns in the ICMM data spreadsheet) and then filter for ‘High’ and ‘Moderate’ certainty only. 
+
+
+
+```{r}
+# Packages
+library(readxl)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(janitor)
+library(sf)
+library(terra)
+library(ggplot2)
+library(rnaturalearth)
+
+
+icmm_raw <- read_xlsx(here::here("data/global-mining-dataset.xlsx"), sheet = 2) %>%
+  janitor::clean_names()
+
+# Keep mines + High/Moderate certainty
+icmm_mines <- icmm_raw %>%
+  filter(
+    str_detect(asset_type %||% "", regex("mine", ignore_case = TRUE)),
+    confidence_factor %in% c("High", "Moderate")
+  )
+
+
+# Normalize to lower-case
+icmm_mines2 <- icmm_mines %>%
+  mutate(
+    across(c(primary_commodity, secondary_commodity, other_commodities),
+           ~ tolower(as.character(.)))
+  )
+
+# Pivot longer and split delimited lists in "other_commodities" (and any others if delimited)
+long_commod <- icmm_mines2 %>%
+  pivot_longer(
+    cols = c(primary_commodity, secondary_commodity, other_commodities),
+    names_to = "commodity_field",
+    values_to = "commodity"
+  ) %>%
+  # split on common delimiters: comma, semicolon, slash, pipe
+  separate_rows(commodity, sep = "\\s*[;,/|]\\s*") %>%
+  mutate(commodity = str_trim(commodity)) %>%
+  filter(!is.na(commodity), commodity != "")
+
+
+# Map symbols to names; also allow common variants
+standardize <- function(x) {
+  x <- tolower(x)
+  x <- dplyr::recode(
+    x,
+    "zn" = "zinc",
+    "cu" = "copper",
+    "co" = "cobalt",
+    "mg" = "magnesium",
+    "mn" = "manganese",
+    "mo" = "molybdenum",
+    "p"  = "phosphate",
+    "phosphorus" = "phosphate",
+    "phosphates" = "phosphate",
+    .default = x
+  )
+  x
+}
+
+targets <- c("zinc", "phosphate", "cobalt", "copper", "magnesium", "manganese", "molybdenum")
+
+long_commod <- long_commod %>%
+  mutate(commodity_std = standardize(commodity)) %>%
+  filter(commodity_std %in% targets) %>%
+  # drop exact duplicates (same facility+commodity repeated across fields)
+  distinct(icmmid, commodity_std, .keep_all = TRUE)
+
+
+pts <- st_as_sf(
+  long_commod,
+  coords = c("longitude", "latitude"),
+  crs = 4326
+) %>%
+  # pull numeric lon/lat to compute offsets
+  mutate(
+    lon = sf::st_coordinates(.)[, 1],
+    lat = sf::st_coordinates(.)[, 2]
+  ) %>%
+  st_drop_geometry()
+
+# Assign a fixed tiny offset per commodity so co-located commodities don't overlap.
+# You can tweak angles/radius if needed.
+offset_tbl <- tibble::tibble(
+  commodity_std = c("copper", "zinc", "cobalt", "molybdenum", "manganese", "magnesium", "phosphate"),
+  angle_deg     = c(0, 60, 120, 180, 240, 300, 90),  # spread nicely
+  radius        = 0.12                                # ~13 km at equator; adjust to taste
+)
+
+pts_off <- pts %>%
+  left_join(offset_tbl, by = "commodity_std") %>%
+  mutate(
+    lon_off = lon + radius * cos(pi * angle_deg / 180),
+    lat_off = lat + radius * sin(pi * angle_deg / 180)
+  )
+
+
+marine_relative_richness <- project(
+  terra::rast("data/species_richness/file_show (2).tiff"),
+  terra::rast(res = 0.5)
+)
+marine_relative_richness[is.na(marine_relative_richness[])] <- 0
+
+terrestrial_relative_richness <- project(
+  terra::rast("data/species_richness/file_show (3).tiff"),
+  terra::rast(res = 0.5)
+)
+terrestrial_relative_richness[is.na(terrestrial_relative_richness[])] <- 0
+
+land_sea_richness_rast <- terra::app(
+  c(marine_relative_richness, terrestrial_relative_richness),
+  fun = sum, na.rm = TRUE
+)
+land_sea_richness_df <- terra::as.data.frame(land_sea_richness_rast, xy = TRUE)
+
+coastline <- rnaturalearth::ne_coastline(scale = "medium", returnclass = "sf")
+
+# labels
+label_map <- c(
+  copper = "Cu",
+  zinc = "Zn",
+  cobalt = "Co",
+  molybdenum = "Mo",
+  manganese = "Mn",
+  magnesium = "Mg",
+  phosphate = "P"
+)
+
+pts_off$commodity_label <- label_map[pts_off$commodity_std]
+
+
+ggplot() +
+  geom_tile(
+    data = land_sea_richness_df,
+    aes(x = x, y = y, fill = sum),
+    width = 1, height = 1
+  ) +
+  geom_sf(data = coastline, colour = "grey50", linewidth = 0.4) +
+  geom_point(
+    data = pts_off,
+    aes(x = lon_off, y = lat_off, colour = commodity_label),
+    size = 2.5, alpha = 0.9
+  ) +
+  coord_sf(expand = FALSE) +
+  theme_void() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 10),
+    plot.margin = margin(t = 0, l = 0, r = 0, b = 0)
+  ) +
+  guides(
+    fill   = guide_colorbar(title.position = "top", title.hjust = 0.5),
+    colour = guide_legend(title.position = "top", title.hjust = 0.5)
+  ) +
+  labs(
+    fill   = "Relative species richness",
+    colour = "Metal ore mining locations"
+  )
+
+ggsave("figures/mining_locations_spp_richness_overlay_new.jpg", device = "jpg", dpi = 300, width = 18, height = 11, units = "cm")
+
+
+
+```
+
+

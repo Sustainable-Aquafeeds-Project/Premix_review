@@ -67,7 +67,7 @@ summary_by_spp <-
   aes(x = reorder(animal_type, -n), y = n, fill = Premix )+
   geom_col()+
   theme_pubr()+
-  labs(y = "Number of studies")+
+  labs(y = "Number of LCAs")+
   scale_fill_manual(values = brewer.pal(n = 2, "Dark2"))+
     theme(legend.position = c(0.75, 0.9),
           legend.background = element_rect(fill = "transparent"),
@@ -113,7 +113,7 @@ summary_by_inclusion <-
         legend.title = element_blank())+
   scale_fill_manual(values = brewer.pal(4, "PRGn"))+
   scale_y_continuous(limits = c(0,1))+
-  labs(y = "Proportion of studies")
+  labs(y = "Proportion of LCAs")
 )
 
 ggsave(filename = "explore/cottrell_explore/count_by_inclusion_level.jpg", device = "jpg", dpi = 300, width=8.9, height =8, units = "cm")
@@ -194,7 +194,7 @@ p1 <- ggplot(proxy_types |>
     legend.title = element_blank(),
   
     )+
-  labs(y = "Number of studies")+
+  labs(y = "Number of LCAs")+
   scale_fill_manual(values = c("Calcium\ncarbonate" = brewer.pal(8, name = "BuPu")[8],
                                "Phosphorus" = brewer.pal(8, name = "BuPu")[6],
                                "Sodium\nchloride" = brewer.pal(8, name = "BuPu")[7],
@@ -250,7 +250,7 @@ p2 <- ggplot(data = proxy_types_taxa |>
     )+
   scale_y_continuous(expand = c(0,0))+
   geom_vline(xintercept = c(1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5), linetype = 2, colour = "grey90")+
-  labs(y = "Number of studies")+
+  labs(y = "Number of LCAs")+
   coord_flip()
 
 ggsave(filename = "figures/proxy_type_by_taxa.jpg", device = "jpg", dpi = 600, width = 8.9, height = 8, units = "cm")

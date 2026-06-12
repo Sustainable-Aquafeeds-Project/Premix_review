@@ -116,16 +116,32 @@ summary_by_inclusion <-
   labs(y = "Proportion of LCAs")
 )
 
-ggsave(filename = "explore/cottrell_explore/count_by_inclusion_level.jpg", device = "jpg", dpi = 300, width=8.9, height =8, units = "cm")
+ggsave(
+  filename = "explore/cottrell_explore/count_by_inclusion_level.jpg",
+  device = "jpg",
+  dpi = 300,
+  width = 8.9,
+  height = 8,
+  units = "cm"
+)
 
-ggarrange(p1, p2, 
-          nrow = 1, 
-          ncol = 2, 
-          widths = c(1,1),
-          labels = "auto", 
-          font.label = list(size = 10))
+ggarrange(
+  p1, p2,
+  nrow = 1,
+  ncol = 2,
+  widths = c(1, 1),
+  labels = "auto",
+  font.label = list(size = 10)
+)
 
-ggsave(filename = "figures/summary_of_inclusion_and_inclusion_type.jpg", device = "jpg", dpi=600, width = 18, height = 8, units="cm")
+ggsave(
+  filename = "figures/summary_of_inclusion_and_inclusion_type.png",
+  device = "png",
+  dpi = 600,
+  width = 18,
+  height = 8,
+  units = "cm"
+)
 
 
 
@@ -269,8 +285,7 @@ ggsave(filename = "figures/summary_of_proxies_used.jpg", device = "jpg", dpi=600
 
 ```
 
-Overlay of mining for key metals in premix with biodiversity layers
- - NOTE: This is the old version
+Overlay of mining for key metals in premix with biodiversity layers - NOTE: This is the old version
 
 ```{r, eval=F}
 
@@ -322,9 +337,7 @@ ggsave("figures/mining_locations_spp_richness_overlay.jpg", device = "jpg", dpi 
 
 ```
 
-Use data from https://www.icmm.com/en-gb/research/data/2025/global-mining-dataset
-I suggest we use mines that have any of Zn, P, Co, Cu, Mg, Mn, Mo, as a primary, secondary or other (see the columns in the ICMM data spreadsheet) and then filter for ‘High’ and ‘Moderate’ certainty only. 
- - NOTE: this is the new version
+Use data from https://www.icmm.com/en-gb/research/data/2025/global-mining-dataset I suggest we use mines that have any of Zn, P, Co, Cu, Mg, Mn, Mo, as a primary, secondary or other (see the columns in the ICMM data spreadsheet) and then filter for ‘High’ and ‘Moderate’ certainty only. - NOTE: this is the new version
 
 ```{r}
 # Packages
@@ -516,5 +529,3 @@ ggsave(
 
 
 ```
-
-

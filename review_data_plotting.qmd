@@ -272,7 +272,7 @@ ggsave(filename = "figures/summary_of_proxies_used.jpg", device = "jpg", dpi=600
 Overlay of mining for key metals in premix with biodiversity layers
  - NOTE: This is the old version
 
-```{r}
+```{r, eval=F}
 
 mining_facilities <- st_read(file.path(rdsi_dir, "mining_locations/jasansky_2023_global_mining_disaggregated/data/facilities.gpkg")) |> 
   filter(primary_commodity %in% c("Copper", "Iron", "Zinc", "Other mine"))
@@ -321,6 +321,7 @@ ggplot()+
 ggsave("figures/mining_locations_spp_richness_overlay.jpg", device = "jpg", dpi = 300, width = 18, height = 11, units = "cm")
 
 ```
+
 Use data from https://www.icmm.com/en-gb/research/data/2025/global-mining-dataset
 I suggest we use mines that have any of Zn, P, Co, Cu, Mg, Mn, Mo, as a primary, secondary or other (see the columns in the ICMM data spreadsheet) and then filter for ‘High’ and ‘Moderate’ certainty only. 
  - NOTE: this is the new version
@@ -336,6 +337,8 @@ library(sf)
 library(terra)
 library(ggplot2)
 library(rnaturalearth)
+library(rnaturalearthhires)
+library(RColorBrewer)
 
 
 icmm_raw <- read_xlsx(here::here("data/global-mining-dataset.xlsx"), sheet = 2) %>%
@@ -443,7 +446,7 @@ land_sea_richness_rast <- terra::app(
 )
 land_sea_richness_df <- terra::as.data.frame(land_sea_richness_rast, xy = TRUE)
 
-coastline <- rnaturalearth::ne_coastline(scale = "medium", returnclass = "sf")
+coastline <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
 
 # labels
 label_map <- c(
@@ -455,6 +458,8 @@ label_map <- c(
   magnesium = "Mg",
   phosphate = "P"
 )
+# brewer.pal(9, "Set1")
+points_pal <- c("#E41A1C", "#377EB8", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF")
 
 pts_off$commodity_label <- label_map[pts_off$commodity_std]
 
@@ -472,22 +477,41 @@ ggplot() +
     size = 2.5, alpha = 0.9
   ) +
   coord_sf(expand = FALSE) +
+  scale_fill_gradient(low = "white", high = "darkgreen") +
+  scale_color_manual(values = points_pal) +
   theme_void() +
   theme(
     legend.position = "bottom",
-    text = element_text(size = 10),
+    text = element_text(size = 11, family = "serif"),
+    legend.key.width = unit(0.3, "cm"),
+    # legend.key.spacing.x = unit(0.5, "cm"),
+    legend.spacing.x = unit(1, "cm"),
     plot.margin = margin(t = 0, l = 0, r = 0, b = 0)
   ) +
   guides(
-    fill   = guide_colorbar(title.position = "top", title.hjust = 0.5),
-    colour = guide_legend(title.position = "top", title.hjust = 0.5)
+    fill = guide_colorbar(
+      title.position = "top", title.hjust = 0.5,
+      barwidth = unit(8, "cm"),
+      ticks.colour = "grey30",
+      frame.colour = "grey30"
+    ),
+    colour = guide_legend(
+      title.position = "top", title.hjust = 0.5,
+      nrow = 1
+    )
   ) +
   labs(
     fill   = "Relative species richness",
     colour = "Metal ore mining locations"
   )
 
-ggsave("figures/mining_locations_spp_richness_overlay_new.jpg", device = "jpg", dpi = 300, width = 18, height = 11, units = "cm")
+ggsave(
+  "figures/mining_locations_spp_richness_overlay_new.png",
+  dpi = 600,
+  width = 22,
+  height = 13,
+  units = "cm"
+)
 
 
 
